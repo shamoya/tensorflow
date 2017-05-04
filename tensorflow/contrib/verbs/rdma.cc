@@ -475,7 +475,7 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_4096;
+    attr.path_mtu = IBV_MTU_1024;
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
