@@ -29,6 +29,7 @@ namespace tensorflow {
 
 class RdmaMgr {
  public:
+  RdmaAdapter* rdma_adapter_;
   explicit RdmaMgr(const WorkerEnv* const worker_env,
                    GrpcChannelCache* const channel_cache);
   ~RdmaMgr();
@@ -41,7 +42,6 @@ class RdmaMgr {
   size_t num_remote_workers_;
   const WorkerEnv* const worker_env_;
   GrpcChannelCache* const channel_cache_;
-  RdmaAdapter* rdma_adapter_;
   typedef std::unordered_map<string, RdmaChannel*> ChannelTable;
   ChannelTable channel_table_;
 

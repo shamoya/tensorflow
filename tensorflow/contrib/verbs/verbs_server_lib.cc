@@ -22,6 +22,9 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
+#include <csignal>
+
+VerbsServer* global_rdma_mgr;
 
 namespace tensorflow {
 
@@ -103,6 +106,7 @@ Status VerbsServer::Start() {
       rdma_mgr_->SetupChannels();
       verbs_state_ = CONNECTED;
     }
+    global_rdma_mgr = rdma_mgr_;
   }
   return s;
 }
@@ -146,6 +150,10 @@ class VerbsServerFactory : public ServerFactory {
   }
 };
 
+void my_handler(int s) {
+  global_rdma_mgr->rdma_adapter_->printLogEvents();
+}
+
 // Registers a `ServerFactory` for `VerbsServer` instances.
 class VerbsServerRegistrar {
  public:
@@ -156,6 +164,7 @@ class VerbsServerRegistrar {
     alloc_fns.free_fn = port::Free;
     gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("VERBS_SERVER", new VerbsServerFactory());
+    signal (SIGINT, my_handler);
   }
 };
 static VerbsServerRegistrar registrar;

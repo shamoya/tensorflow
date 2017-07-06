@@ -64,6 +64,20 @@ string MessageTypeToString(RdmaMessageType rmt) {
       return "UNKNOWN MESSAGE";
   }
 }
+
+string SideTypeToString(RdmaSideType side) {
+  switch (side) {
+    case SENT_RDMA_MESSAGE:
+      return "Sent";
+      break;
+    case RECV_RDMA_MESSAGE:
+      return "Recv";
+      break;
+    default:
+      return "UNKNOWN MESSAGE";
+  }
+}
+
 }  // namespace
 
 ibv_context* open_default_device() {
@@ -87,7 +101,7 @@ ibv_pd* alloc_protection_domain(ibv_context* context) {
 RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
     : context_(open_default_device()),
       pd_(alloc_protection_domain(context_)),
-      worker_env_(worker_env) {
+      worker_env_(worker_env), log_index(0) {
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
   cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
@@ -109,6 +123,21 @@ RdmaAdapter::~RdmaAdapter() {
 }
 
 string RdmaAdapter::name() const { return string(context_->device->name); }
+
+void RdmaAdapter::logEvent(RdmaSideType side, RdmaMessageType rmt, int line) {
+  logger_vec[log_index % MAX_CONCURRENT_WRITES] = new RdmaLogInfo(side, rmt, line);
+  log_index++;
+}
+
+void RdmaAdapter::printLogEvents() {
+  ofstream output;
+  output.open("/tmp/output.txt");
+  for(std::vector<Idos*>::iterator iter = logger_vec.begin(); iter != logger_vec.end(); ++iter) {
+	output << log_index << std::endl;
+	output << SideTypeToString((*iter)->_side) << " " << MessageTypeToString((*iter)->_type) << " " << (*iter)->_line << std::endl;
+  }
+  output.close();
+}
 
 // Function to process incoming messages
 // There are two types of messages:
@@ -140,7 +169,7 @@ void RdmaAdapter::Process_CQ() {
         RdmaBuffer* rb = rc->FindBuffer(imm_data);
         RdmaMessage rm;
         RdmaMessage::ParseMessage(rm, rb->buffer_);
-        VLOG(2) << "recv RDMA message: " << MessageTypeToString(rm.type_);
+        logEvent(RECV_RDMA_MESSAGE, rm.type_, __LINE__);
 
         if (rm.type_ == RDMA_MESSAGE_ACK) {
           // receive an ack to a message
@@ -222,7 +251,7 @@ void RdmaAdapter::Process_CQ() {
         rb->SetBufferStatus(local, idle);
         RdmaMessage rm;
         RdmaMessage::ParseMessage(rm, rb->buffer_);
-        VLOG(2) << "sent RDMA message: " << MessageTypeToString(rm.type_);
+        logEvent(SENT_RDMA_MESSAGE, rm.type_, __LINE__);
         if (rm.type_ != RDMA_MESSAGE_ACK) {
           worker_env_->compute_pool->Schedule([rb]() { rb->SendNextItem(); });
         }

@@ -59,7 +59,21 @@ enum RdmaMessageType {
   RDMA_MESSAGE_TENSOR_REQUEST,
   RDMA_MESSAGE_TENSOR_WRITE
 };
+enum RdmaSideType {
+  SENT_RDMA_MESSAGE,
+  RECV_RDMA_MESSAGE
+};
 class RdmaBuffer;
+
+class RdmaLogInfo {
+ public:
+  RdmaLogInfo(RdmaSideType side, RdmaMessageType _type, int line):
+    _side(side), _type(type), _line(line) {}
+  RdmaSideType _side;
+  RdmaMessageType _type;
+  int _line;
+};
+
 // Class that represents the Rdma Adapter.
 // Responsible for creation of the completion queue, and handling
 // of work completions.
@@ -81,6 +95,7 @@ class RdmaAdapter {
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
+  static const int MAX_LOG_EVENTS = 20000;
   ibv_context* context_;
   // ibverbs protection domain
   ibv_pd* pd_;
@@ -94,6 +109,8 @@ class RdmaAdapter {
   const WorkerEnv* worker_env_;
   // thread for cq.
   std::unique_ptr<Thread> polling_thread_;
+  uint64_t log_index;
+  std::vector<RdmaLogInfo*> logger_vec(MAX_LOG_EVENTS);
 };
 
 // Class that represents a connection to a remote Rdma peer.
