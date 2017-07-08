@@ -67,11 +67,12 @@ class RdmaBuffer;
 
 class RdmaLogInfo {
  public:
-  RdmaLogInfo(RdmaSideType side, RdmaMessageType _type, int line):
-    _side(side), _type(type), _line(line) {}
+  RdmaLogInfo(RdmaSideType side, RdmaMessageType _type, uint64_t log_index, string name);
+  ~RdmaLogInfo();
   RdmaSideType _side;
   RdmaMessageType _type;
-  int _line;
+  uint64_t _log_index;
+  string _name;
 };
 
 // Class that represents the Rdma Adapter.
@@ -92,6 +93,8 @@ class RdmaAdapter {
   // Adapter name, e.g. mlx5_0.
   string name() const;
   void Process_CQ();
+  void printLogEvents();
+  void logEvent(RdmaSideType side, RdmaMessageType rmt, string name);
 
  protected:
   static const int MAX_CONCURRENT_WRITES = 1000;
@@ -110,7 +113,7 @@ class RdmaAdapter {
   // thread for cq.
   std::unique_ptr<Thread> polling_thread_;
   uint64_t log_index;
-  std::vector<RdmaLogInfo*> logger_vec(MAX_LOG_EVENTS);
+  std::vector<RdmaLogInfo*> logger_vec;
 };
 
 // Class that represents a connection to a remote Rdma peer.

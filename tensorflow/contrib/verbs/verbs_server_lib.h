@@ -29,6 +29,7 @@ class VerbsServer : public GrpcServer {
   VerbsServer(const ServerDef& server_def, Env* env);
 
  public:
+  RdmaMgr* rdma_mgr_;
   static Status Create(const ServerDef& server_def, Env* env,
                        std::unique_ptr<ServerInterface>* out_server);
 
@@ -47,8 +48,6 @@ class VerbsServer : public GrpcServer {
                              GrpcChannelCache** channel_cache);
 
  private:
-  RdmaMgr* rdma_mgr_;
-
   // Guards state transitions.
   mutex mu_;
 

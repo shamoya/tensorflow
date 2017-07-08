@@ -24,8 +24,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include <csignal>
 
-VerbsServer* global_rdma_mgr;
-
 namespace tensorflow {
 
 namespace {
@@ -106,7 +104,6 @@ Status VerbsServer::Start() {
       rdma_mgr_->SetupChannels();
       verbs_state_ = CONNECTED;
     }
-    global_rdma_mgr = rdma_mgr_;
   }
   return s;
 }
@@ -123,16 +120,21 @@ Status VerbsServer::Join() {
   return s;
 }
 
+VerbsServer *global_verbs_server;
+
 /* static */
 Status VerbsServer::Create(const ServerDef& server_def, Env* env,
                            std::unique_ptr<ServerInterface>* out_server) {
-  std::unique_ptr<VerbsServer> ret(new VerbsServer(server_def, Env::Default()));
+  global_verbs_server = new VerbsServer(server_def, Env::Default());
+  std::unique_ptr<VerbsServer> ret(global_verbs_server);
+  // std::unique_ptr<VerbsServer> ret(new VerbsServer(server_def, Env::Default()));
   ServiceInitFunction service_func = [&ret](const WorkerEnv* worker_env,
                                             ::grpc::ServerBuilder* builder) {
     return SetNewVerbsService(&ret->verbs_service_, worker_env, builder);
   };
   TF_RETURN_IF_ERROR(ret->Init(service_func, NewRdmaRendezvousMgr));
   *out_server = std::move(ret);
+  // global_verbs_server = std::move(ret);
   return Status::OK();
 }
 
@@ -146,12 +148,14 @@ class VerbsServerFactory : public ServerFactory {
 
   Status NewServer(const ServerDef& server_def,
                    std::unique_ptr<ServerInterface>* out_server) override {
-    return VerbsServer::Create(server_def, Env::Default(), out_server);
+    Status s = VerbsServer::Create(server_def, Env::Default(), out_server);
+    // global_verbs_server = *out_server;
+    return s;
   }
 };
 
 void my_handler(int s) {
-  global_rdma_mgr->rdma_adapter_->printLogEvents();
+  global_verbs_server->rdma_mgr_->rdma_adapter_->printLogEvents();
 }
 
 // Registers a `ServerFactory` for `VerbsServer` instances.
@@ -164,7 +168,7 @@ class VerbsServerRegistrar {
     alloc_fns.free_fn = port::Free;
     gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("VERBS_SERVER", new VerbsServerFactory());
-    signal (SIGINT, my_handler);
+    signal (SIGUSR1, my_handler);
   }
 };
 static VerbsServerRegistrar registrar;

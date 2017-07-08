@@ -17,6 +17,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/rdma.h"
 #include <cstdlib>
+#include <fstream>
+#include <unistd.h>
 #include "tensorflow/contrib/verbs/verbs_util.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
@@ -98,10 +100,14 @@ ibv_pd* alloc_protection_domain(ibv_context* context) {
   return pd;
 }
 
+RdmaLogInfo::RdmaLogInfo(RdmaSideType side, RdmaMessageType type, uint64_t log_index, string name)
+    : _side(side), _type(type), _log_index(log_index), _name(name) {}
+
+
 RdmaAdapter::RdmaAdapter(const WorkerEnv* worker_env)
     : context_(open_default_device()),
       pd_(alloc_protection_domain(context_)),
-      worker_env_(worker_env), log_index(0) {
+      worker_env_(worker_env), log_index(0), logger_vec(MAX_LOG_EVENTS) {
   event_channel_ = ibv_create_comp_channel(context_);
   CHECK(event_channel_) << "Failed to create completion channel";
   cq_ = ibv_create_cq(context_, MAX_CONCURRENT_WRITES * 2, NULL, event_channel_,
@@ -124,17 +130,16 @@ RdmaAdapter::~RdmaAdapter() {
 
 string RdmaAdapter::name() const { return string(context_->device->name); }
 
-void RdmaAdapter::logEvent(RdmaSideType side, RdmaMessageType rmt, int line) {
-  logger_vec[log_index % MAX_CONCURRENT_WRITES] = new RdmaLogInfo(side, rmt, line);
+void RdmaAdapter::logEvent(RdmaSideType side, RdmaMessageType rmt, string name) {
+  logger_vec[log_index % MAX_LOG_EVENTS] = new RdmaLogInfo(side, rmt, log_index, name);
   log_index++;
 }
 
 void RdmaAdapter::printLogEvents() {
-  ofstream output;
-  output.open("/tmp/output.txt");
-  for(std::vector<Idos*>::iterator iter = logger_vec.begin(); iter != logger_vec.end(); ++iter) {
-	output << log_index << std::endl;
-	output << SideTypeToString((*iter)->_side) << " " << MessageTypeToString((*iter)->_type) << " " << (*iter)->_line << std::endl;
+  std::ofstream output;
+  output.open("/tmp/output.txt" + std::to_string(getpid()));
+  for(std::vector<RdmaLogInfo*>::iterator iter = logger_vec.begin(); iter != logger_vec.end(); ++iter) {
+	output << (*iter)->_log_index << ": " << SideTypeToString((*iter)->_side) << " " << MessageTypeToString((*iter)->_type) << " " << (*iter)->_name << std::endl;
   }
   output.close();
 }
@@ -169,7 +174,7 @@ void RdmaAdapter::Process_CQ() {
         RdmaBuffer* rb = rc->FindBuffer(imm_data);
         RdmaMessage rm;
         RdmaMessage::ParseMessage(rm, rb->buffer_);
-        logEvent(RECV_RDMA_MESSAGE, rm.type_, __LINE__);
+        logEvent(RECV_RDMA_MESSAGE, rm.type_, rm.name_);
 
         if (rm.type_ == RDMA_MESSAGE_ACK) {
           // receive an ack to a message
@@ -251,7 +256,7 @@ void RdmaAdapter::Process_CQ() {
         rb->SetBufferStatus(local, idle);
         RdmaMessage rm;
         RdmaMessage::ParseMessage(rm, rb->buffer_);
-        logEvent(SENT_RDMA_MESSAGE, rm.type_, __LINE__);
+        logEvent(SENT_RDMA_MESSAGE, rm.type_, rm.name_);
         if (rm.type_ != RDMA_MESSAGE_ACK) {
           worker_env_->compute_pool->Schedule([rb]() { rb->SendNextItem(); });
         }
